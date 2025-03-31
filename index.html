@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Yield to Maturity Calculator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 1rem;
+      max-width: 800px;
+      margin: auto;
+    }
+    label {
+      display: block;
+      margin-top: 1rem;
+    }
+    input {
+      width: 100%;
+      padding: 0.5rem;
+      font-size: 1rem;
+    }
+    button {
+      margin-top: 1.5rem;
+      padding: 0.6rem 1rem;
+      font-size: 1rem;
+    }
+    .result, .cashflow-table {
+      margin-top: 1.5rem;
+      padding: 1rem;
+      background: #f5f5f5;
+      border: 1px solid #ccc;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 0.5rem;
+      text-align: right;
+    }
+    th {
+      background: #eee;
+    }
+    canvas {
+      margin-top: 2rem;
+      width: 100%;
+      height: 300px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Yield to Maturity Calculator</h2>
+  <p>Enter bond details below to estimate its YTM and visualize the cash flows and price-YTM relationship.</p>
+
+  <label for="price">Bond Price (e.g. 97.5):</label>
+  <input type="number" id="price" step="0.01" />
+
+  <label for="face">Face Value (e.g. 100):</label>
+  <input type="number" id="face" value="100" step="0.01" />
+
+  <label for="coupon">Annual Coupon Rate (%) (e.g. 4):</label>
+  <input type="number" id="coupon" step="0.01" />
+
+  <label for="years">Years to Maturity:</label>
+  <input type="number" id="years" step="1" />
+
+  <label for="frequency">Payments per Year (e.g. 2 for semiannual):</label>
+  <input type="number" id="frequency" value="2" step="1" />
+
+  <button onclick="calculateYTM()">Calculate YTM</button>
+
+  <div class="result" id="result"></div>
+  <div class="cashflow-table" id="cashflows"></div>
+  <canvas id="ytmChart"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    function calculateYTM() {
+      const price = parseFloat(document.getElementById("price").value);
+      const face = parseFloat(document.getElementById("face").value);
+      const couponRate = parseFloat(document.getElementById("coupon").value) / 100;
+      const years = parseInt(document.getElementById("years").value);
+      const freq = parseInt(document.getElementById("frequency").value);
+      const n = years * freq;
+      const C = (face * couponRate) / freq;
+
+      let r = 0.05 / freq;
+      let epsilon = 1e-6;
+      let maxIter = 100;
+      let iteration = 0;
+
+      function bondPrice(rate) {
+        let p = 0;
+        for (let t = 1; t <= n; t++) {
+          p += C / Math.pow(1 + rate, t);
+        }
+        p += face / Math.pow(1 + rate, n);
+        return p;
+      }
+
+      function bondPriceDerivative(rate) {
+        let dp = 0;
+        for (let t = 1; t <= n; t++) {
+          dp -= t * C / Math.pow(1 + rate, t + 1);
+        }
+        dp -= n * face / Math.pow(1 + rate, n + 1);
+        return dp;
+      }
+
+      while (iteration < maxIter) {
+        const f = bondPrice(r) - price;
+        const fPrime = bondPriceDerivative(r);
+        const rNext = r - f / fPrime;
+        if (Math.abs(rNext - r) < epsilon) {
+          r = rNext;
+          break;
+        }
+        r = rNext;
+        iteration++;
+      }
+
+      const annualYTM = (r * freq * 100).toFixed(3);
+      document.getElementById("result").innerHTML = `Estimated YTM: <strong>${annualYTM}%</strong> (annualized)`;
+
+      // Show cash flow table
+      let cashHTML = '<h4>Cash Flow Schedule</h4><table><tr><th>Period</th><th>Payment</th><th>Discount Factor</th><th>Present Value</th></tr>';
+      let totalPV = 0;
+      for (let t = 1; t <= n; t++) {
+        const disc = Math.pow(1 + r, t);
+        const pv = C / disc;
+        totalPV += pv;
+        cashHTML += `<tr><td>${t}</td><td>${C.toFixed(2)}</td><td>${disc.toFixed(4)}</td><td>${pv.toFixed(2)}</td></tr>`;
+      }
+      const finalDisc = Math.pow(1 + r, n);
+      const finalPV = face / finalDisc;
+      totalPV += finalPV;
+      cashHTML += `<tr><td>${n}</td><td>${face.toFixed(2)}</td><td>${finalDisc.toFixed(4)}</td><td>${finalPV.toFixed(2)}</td></tr>`;
+      cashHTML += `<tr><td colspan="3"><strong>Total PV</strong></td><td><strong>${totalPV.toFixed(2)}</strong></td></tr></table>`;
+      document.getElementById("cashflows").innerHTML = cashHTML;
+
+      // Generate Price vs YTM chart
+      const ytmRange = [];
+      const priceRange = [];
+      for (let y = 0.01; y <= 0.12; y += 0.0025) {
+        ytmRange.push((y * 100).toFixed(1));
+        let trialR = y / freq;
+        let trialPrice = bondPrice(trialR);
+        priceRange.push(trialPrice.toFixed(2));
+      }
+      const ctx = document.getElementById('ytmChart').getContext('2d');
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: ytmRange,
+          datasets: [{
+            label: 'Bond Price vs YTM',
+            data: priceRange,
+            borderColor: '#00528C',
+            borderWidth: 2,
+            fill: false
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {legend: {display: false}},
+          scales: {
+            x: {
+              title: {display: true, text: 'YTM (%)'}
+            },
+            y: {
+              title: {display: true, text: 'Price'}
+            }
+          }
+        }
+      });
+    }
+  </script>
+</body>
+</html>
